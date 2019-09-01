@@ -1,8 +1,35 @@
-#include<iostream> 
+#include<stdbool.h>
 #include<stdio.h>
 #include<stdlib.h>
+#include<string.h>
 
 typedef signed int ssize_t;
+
+// Exceptions are bad => C doesn't support them 
+
+typedef enum
+{
+	META_COMMAND_SUCCESS,
+	META_COMMAND_UNRECOGNIZED_COMMAND
+
+} MetaCommandResult; // one of that return 
+
+typedef enum
+{
+	PREPARE_SUCCESS,
+	PREPARE_UNRECOGNIZED_STATEMENT
+} PrepareResult;
+
+typedef enum
+{
+	STATEMENT_INSERT,
+	STATEMENT_SELECT
+} StatementType;
+
+typedef struct
+{
+	StatementType type;
+} Statement;
 
 typedef struct 
 {
@@ -55,6 +82,35 @@ void close_input_buffer(InputBuffer* input_buffer)
 	free(input_buffer->buffer);
 	free(input_buffer);
 }
+
+MetaCommandResult do_meta_command(InputBuffer* input_buffer)
+{
+	if (strcmp(input_buffer->buffer, ".exit") == 0)
+		exit(EXIT_SUCCESS);
+	else
+		return META_COMMAND_UNRECOGNIZED_COMMAND;
+}
+
+// function for understand SQL commands 
+PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement)
+{
+	// strncmp but only for n-bytes, return 0 if n-bytes 
+	// identical because after insert following data
+	if (strncmp(input_buffer->buffer, "insert", 6 /* number of bytes */) == 0)
+	{
+		statement->type = STATEMENT_INSERT;
+		return PREPARE_SUCCESS;
+	}
+	if (strcmp(input_buffer->buffer, "select") == 0)
+	{
+		statement->type = STATEMENT_SELECT;
+		return PREPARE_SUCCESS;
+	}
+
+	return PREPARE_UNRECOGNIZED_STATEMENT;
+}
+
+void
 // sqlite read-execute-print loop 
 int main(int argc, char **argv)
 {
@@ -64,7 +120,7 @@ int main(int argc, char **argv)
 	{
 		print_prompt();
 		read_input(input_buffer);
-		
+
 		if (strcmp(input_buffer->buffer, "exit") == 0)
 		{
 			close_input_buffer(input_buffer);
@@ -74,5 +130,32 @@ int main(int argc, char **argv)
 		{
 			printf("Unrecognized command %s", input_buffer->buffer);
 		}
+
+		// Non-SQL statements like ".exit" called meta-commands -> all start with a dot 
+		if (input_buffer->buffer[0] == '.')
+		{
+			switch (do_meta_command(input_buffer))
+			{
+			case (META_COMMAND_SUCCESS):
+				continue;
+			case (META_COMMAND_UNRECOGNIZED_COMMAND):
+				printf("Unrecongnized command '%s'\n", input_buffer->buffer);
+				continue;
+			}
+		}
+
+		// process of convert line of input into an internal representation 
+		Statement statement;
+		switch (prepare_statement(input_buffer, &statement))
+		{
+		case (PREPARE_SUCCESS):
+			break;
+		case (PREPARE_UNRECOGNIZED_STATEMENT):
+			printf("Unrecognized keyword at start of '%s'.\n", input_buffer->buffer);
+			continue;
+		}
+
+		execute_statement(&statement);
+		printf("Executed.\n");
 	}
 }
